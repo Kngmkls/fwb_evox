@@ -90,7 +90,9 @@ private val specMap = mapOf(
         "onehanded" to OneHandedModeTile::class.java,
         "color_correction" to ColorCorrectionTile::class.java,
         "dream" to DreamTile::class.java,
-        "font_scaling" to FontScalingTile::class.java
+        "font_scaling" to FontScalingTile::class.java,
+        "sound" to SoundTile::class.java
+        
 )
 
 @RunWith(AndroidTestingRunner::class)
