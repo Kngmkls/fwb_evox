@@ -94,6 +94,7 @@ import android.view.DisplayInfo;
 import android.view.RemoteAnimationTarget;
 import android.view.SurfaceControl;
 import android.window.ITaskFragmentOrganizer;
+import android.window.TaskFragmentAnimationParams;
 import android.window.TaskFragmentInfo;
 import android.window.TaskFragmentOrganizerToken;
 
@@ -304,6 +305,10 @@ class TaskFragment extends WindowContainer<WindowContainer> {
     @Nullable
     private final IBinder mFragmentToken;
 
+    /** The animation override params for animation running on this TaskFragment. */
+    @NonNull
+    private TaskFragmentAnimationParams mAnimationParams = TaskFragmentAnimationParams.DEFAULT;
+
     /**
      * The bounds of the embedded TaskFragment relative to the parent Task.
      * {@code null} if it is not {@link #mIsEmbedded}
@@ -452,6 +457,15 @@ class TaskFragment extends WindowContainer<WindowContainer> {
     boolean hasTaskFragmentOrganizer(ITaskFragmentOrganizer organizer) {
         return organizer != null && mTaskFragmentOrganizer != null
                 && organizer.asBinder().equals(mTaskFragmentOrganizer.asBinder());
+    }
+
+    void setAnimationParams(@NonNull TaskFragmentAnimationParams animationParams) {
+        mAnimationParams = animationParams;
+    }
+
+    @NonNull
+    TaskFragmentAnimationParams getAnimationParams() {
+        return mAnimationParams;
     }
 
     TaskFragment getAdjacentTaskFragment() {
@@ -1939,7 +1953,7 @@ class TaskFragment extends WindowContainer<WindowContainer> {
                         1f);
                 mBackScreenshots.put(r.mActivityComponent.flattenToString(), backBuffer);
             }
-            child.asActivityRecord().inHistory = true;
+            addingActivity.inHistory = true;
             task.onDescendantActivityAdded(taskHadActivity, activityType, addingActivity);
         }
     }
@@ -2124,7 +2138,7 @@ class TaskFragment extends WindowContainer<WindowContainer> {
 
         final Rect parentBounds = parentConfig.windowConfiguration.getBounds();
         final Rect resolvedBounds = inOutConfig.windowConfiguration.getBounds();
-        if (resolvedBounds == null || resolvedBounds.isEmpty()) {
+        if (resolvedBounds.isEmpty()) {
             mTmpFullBounds.set(parentBounds);
             insideParentBounds = true;
         } else {
@@ -2213,6 +2227,7 @@ class TaskFragment extends WindowContainer<WindowContainer> {
                         : overrideScreenHeightDp;
             }
 
+            // TODO(b/238331848): Consider simplifying logic that computes smallestScreenWidthDp.
             if (inOutConfig.smallestScreenWidthDp
                     == Configuration.SMALLEST_SCREEN_WIDTH_DP_UNDEFINED) {
                 // When entering to or exiting from Pip, the PipTaskOrganizer will set the
@@ -2228,8 +2243,8 @@ class TaskFragment extends WindowContainer<WindowContainer> {
                     // task, because they should not be affected by insets.
                     inOutConfig.smallestScreenWidthDp = (int) (0.5f
                             + Math.min(mTmpFullBounds.width(), mTmpFullBounds.height()) / density);
-                } else if (windowingMode == WINDOWING_MODE_MULTI_WINDOW
-                        && isEmbeddedWithBoundsOverride()) {
+                } else if (windowingMode == WINDOWING_MODE_MULTI_WINDOW && mIsEmbedded
+                        && insideParentBounds && !resolvedBounds.equals(parentBounds)) {
                     // For embedded TFs, the smallest width should be updated. Otherwise, inherit
                     // from the parent task would result in applications loaded wrong resource.
                     inOutConfig.smallestScreenWidthDp =
@@ -2483,13 +2498,18 @@ class TaskFragment extends WindowContainer<WindowContainer> {
         }
     }
 
-    /** Records the starting bounds of the closing organized TaskFragment. */
-    void setClosingChangingStartBoundsIfNeeded() {
+    /**
+     * Returns {@code true} if the starting bounds of the closing organized TaskFragment is
+     * recorded. Otherwise, return {@code false}.
+     */
+    boolean setClosingChangingStartBoundsIfNeeded() {
         if (isOrganizedTaskFragment() && mDisplayContent != null
                 && mDisplayContent.mChangingContainers.remove(this)) {
             mDisplayContent.mClosingChangingContainers.put(
                     this, new Rect(mSurfaceFreezer.mFreezeBounds));
+            return true;
         }
+        return false;
     }
 
     @Override

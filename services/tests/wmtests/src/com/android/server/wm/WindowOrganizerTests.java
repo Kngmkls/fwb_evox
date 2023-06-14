@@ -1240,7 +1240,8 @@ public class WindowOrganizerTests extends WindowTestsBase {
         assertTrue(w1.useBLASTSync());
         assertTrue(w2.useBLASTSync());
 
-        w1.immediatelyNotifyBlastSync();
+        // A drawn window can complete the sync state automatically.
+        w1.mWinAnimator.mDrawState = WindowStateAnimator.HAS_DRAWN;
         mWm.mSyncEngine.onSurfacePlacement();
         verify(mockCallback).onTransactionReady(anyInt(), any());
         assertFalse(w1.useBLASTSync());
@@ -1484,9 +1485,9 @@ public class WindowOrganizerTests extends WindowTestsBase {
         assertEquals(rootTask.mTaskId, info.taskId);
         assertTrue(info.topActivityInSizeCompat);
 
-        // Ensure task info show top activity that is not in foreground as not in size compat.
+        // Ensure task info show top activity that is not visible as not in size compat.
         clearInvocations(organizer);
-        doReturn(false).when(activity).isState(RESUMED);
+        doReturn(false).when(activity).isVisible();
         rootTask.onSizeCompatActivityChanged();
         mWm.mAtmService.mTaskOrganizerController.dispatchPendingEvents();
         verify(organizer).onTaskInfoChanged(infoCaptor.capture());
@@ -1496,7 +1497,7 @@ public class WindowOrganizerTests extends WindowTestsBase {
 
         // Ensure task info show non size compat top activity as not in size compat.
         clearInvocations(organizer);
-        doReturn(true).when(activity).isState(RESUMED);
+        doReturn(true).when(activity).isVisible();
         doReturn(false).when(activity).inSizeCompatMode();
         rootTask.onSizeCompatActivityChanged();
         mWm.mAtmService.mTaskOrganizerController.dispatchPendingEvents();

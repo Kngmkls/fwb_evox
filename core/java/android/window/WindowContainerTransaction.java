@@ -122,6 +122,19 @@ public final class WindowContainerTransaction implements Parcelable {
     }
 
     /**
+     * Sets the densityDpi value in the configuration for the given container.
+     * @hide
+     */
+    @NonNull
+    public WindowContainerTransaction setDensityDpi(@NonNull WindowContainerToken container,
+            int densityDpi) {
+        Change chg = getOrCreateChange(container.asBinder());
+        chg.mConfiguration.densityDpi = densityDpi;
+        chg.mConfigSetMask |= ActivityInfo.CONFIG_DENSITY;
+        return this;
+    }
+
+    /**
      * Notify {@link com.android.server.wm.PinnedTaskController} that the picture-in-picture task
      * has finished the enter animation with the given bounds.
      */
@@ -763,6 +776,30 @@ public final class WindowContainerTransaction implements Parcelable {
     }
 
     /**
+     * Sets the {@link TaskFragmentOperation} to apply to the given TaskFragment.
+     *
+     * @param fragmentToken client assigned unique token to create TaskFragment with specified in
+     *                      {@link TaskFragmentCreationParams#getFragmentToken()}.
+     * @param taskFragmentOperation the {@link TaskFragmentOperation} to apply to the given
+     *                              TaskFramgent.
+     * @hide
+     */
+    @NonNull
+    public WindowContainerTransaction setTaskFragmentOperation(@NonNull IBinder fragmentToken,
+            @NonNull TaskFragmentOperation taskFragmentOperation) {
+        Objects.requireNonNull(fragmentToken);
+        Objects.requireNonNull(taskFragmentOperation);
+        final HierarchyOp hierarchyOp =
+                new HierarchyOp.Builder(
+                        HierarchyOp.HIERARCHY_OP_TYPE_SET_TASK_FRAGMENT_OPERATION)
+                        .setContainer(fragmentToken)
+                        .setTaskFragmentOperation(taskFragmentOperation)
+                        .build();
+        mHierarchyOps.add(hierarchyOp);
+        return this;
+    }
+
+    /**
      * Sets/removes the always on top flag for this {@code windowContainer}. See
      * {@link com.android.server.wm.ConfigurationContainer#setAlwaysOnTop(boolean)}.
      * Please note that this method is only intended to be used for a
@@ -1262,6 +1299,7 @@ public final class WindowContainerTransaction implements Parcelable {
         public static final int HIERARCHY_OP_TYPE_FINISH_ACTIVITY = 21;
         public static final int HIERARCHY_OP_TYPE_SET_COMPANION_TASK_FRAGMENT = 22;
         public static final int HIERARCHY_OP_TYPE_SET_REPARENT_LEAF_TASK_IF_RELAUNCH = 23;
+        public static final int HIERARCHY_OP_TYPE_SET_TASK_FRAGMENT_OPERATION = 24;
 
         // The following key(s) are for use with mLaunchOptions:
         // When launching a task (eg. from recents), this is the taskId to be launched.
@@ -1302,9 +1340,13 @@ public final class WindowContainerTransaction implements Parcelable {
         @Nullable
         private Intent mActivityIntent;
 
-        // Used as options for WindowContainerTransaction#createTaskFragment().
+        /** Used as options for {@link #createTaskFragment}. */
         @Nullable
         private TaskFragmentCreationParams mTaskFragmentCreationOptions;
+
+        /** Used as options for {@link #setTaskFragmentOperation}. */
+        @Nullable
+        private TaskFragmentOperation mTaskFragmentOperation;
 
         @Nullable
         private PendingIntent mPendingIntent;
@@ -1418,6 +1460,7 @@ public final class WindowContainerTransaction implements Parcelable {
             mLaunchOptions = copy.mLaunchOptions;
             mActivityIntent = copy.mActivityIntent;
             mTaskFragmentCreationOptions = copy.mTaskFragmentCreationOptions;
+            mTaskFragmentOperation = copy.mTaskFragmentOperation;
             mPendingIntent = copy.mPendingIntent;
             mShortcutInfo = copy.mShortcutInfo;
             mAlwaysOnTop = copy.mAlwaysOnTop;
@@ -1441,6 +1484,7 @@ public final class WindowContainerTransaction implements Parcelable {
             mLaunchOptions = in.readBundle();
             mActivityIntent = in.readTypedObject(Intent.CREATOR);
             mTaskFragmentCreationOptions = in.readTypedObject(TaskFragmentCreationParams.CREATOR);
+            mTaskFragmentOperation = in.readTypedObject(TaskFragmentOperation.CREATOR);
             mPendingIntent = in.readTypedObject(PendingIntent.CREATOR);
             mShortcutInfo = in.readTypedObject(ShortcutInfo.CREATOR);
             mAlwaysOnTop = in.readBoolean();
@@ -1529,6 +1573,11 @@ public final class WindowContainerTransaction implements Parcelable {
         }
 
         @Nullable
+        public TaskFragmentOperation getTaskFragmentOperation() {
+            return mTaskFragmentOperation;
+        }
+
+        @Nullable
         public PendingIntent getPendingIntent() {
             return mPendingIntent;
         }
@@ -1604,6 +1653,9 @@ public final class WindowContainerTransaction implements Parcelable {
                 case HIERARCHY_OP_TYPE_SET_REPARENT_LEAF_TASK_IF_RELAUNCH:
                     return "{setReparentLeafTaskIfRelaunch: container= " + mContainer
                             + " reparentLeafTaskIfRelaunch= " + mReparentLeafTaskIfRelaunch + "}";
+                case HIERARCHY_OP_TYPE_SET_TASK_FRAGMENT_OPERATION:
+                    return "{setTaskFragmentOperation: fragmentToken= " + mContainer
+                            + " operation= " + mTaskFragmentOperation + "}";
                 default:
                     return "{mType=" + mType + " container=" + mContainer + " reparent=" + mReparent
                             + " mToTop=" + mToTop
@@ -1631,6 +1683,7 @@ public final class WindowContainerTransaction implements Parcelable {
             dest.writeBundle(mLaunchOptions);
             dest.writeTypedObject(mActivityIntent, flags);
             dest.writeTypedObject(mTaskFragmentCreationOptions, flags);
+            dest.writeTypedObject(mTaskFragmentOperation, flags);
             dest.writeTypedObject(mPendingIntent, flags);
             dest.writeTypedObject(mShortcutInfo, flags);
             dest.writeBoolean(mAlwaysOnTop);
@@ -1686,6 +1739,9 @@ public final class WindowContainerTransaction implements Parcelable {
 
             @Nullable
             private TaskFragmentCreationParams mTaskFragmentCreationOptions;
+
+            @Nullable
+            private TaskFragmentOperation mTaskFragmentOperation;
 
             @Nullable
             private PendingIntent mPendingIntent;
@@ -1767,6 +1823,12 @@ public final class WindowContainerTransaction implements Parcelable {
                 return this;
             }
 
+            Builder setTaskFragmentOperation(
+                    @Nullable TaskFragmentOperation taskFragmentOperation) {
+                mTaskFragmentOperation = taskFragmentOperation;
+                return this;
+            }
+
             Builder setReparentLeafTaskIfRelaunch(boolean reparentLeafTaskIfRelaunch) {
                 mReparentLeafTaskIfRelaunch = reparentLeafTaskIfRelaunch;
                 return this;
@@ -1796,6 +1858,7 @@ public final class WindowContainerTransaction implements Parcelable {
                 hierarchyOp.mPendingIntent = mPendingIntent;
                 hierarchyOp.mAlwaysOnTop = mAlwaysOnTop;
                 hierarchyOp.mTaskFragmentCreationOptions = mTaskFragmentCreationOptions;
+                hierarchyOp.mTaskFragmentOperation = mTaskFragmentOperation;
                 hierarchyOp.mShortcutInfo = mShortcutInfo;
                 hierarchyOp.mReparentLeafTaskIfRelaunch = mReparentLeafTaskIfRelaunch;
 

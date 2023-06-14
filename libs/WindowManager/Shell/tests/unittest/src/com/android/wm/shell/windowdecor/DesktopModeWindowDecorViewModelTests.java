@@ -49,6 +49,7 @@ import com.android.wm.shell.common.DisplayController;
 import com.android.wm.shell.common.SyncTransactionQueue;
 import com.android.wm.shell.desktopmode.DesktopModeController;
 import com.android.wm.shell.desktopmode.DesktopTasksController;
+import com.android.wm.shell.splitscreen.SplitScreenController;
 
 import org.junit.Before;
 import org.junit.Test;
@@ -73,6 +74,7 @@ public class DesktopModeWindowDecorViewModelTests extends ShellTestCase {
     @Mock private Choreographer mMainChoreographer;
     @Mock private ShellTaskOrganizer mTaskOrganizer;
     @Mock private DisplayController mDisplayController;
+    @Mock private SplitScreenController mSplitScreenController;
     @Mock private SyncTransactionQueue mSyncQueue;
     @Mock private DesktopModeController mDesktopModeController;
     @Mock private DesktopTasksController mDesktopTasksController;
@@ -98,6 +100,7 @@ public class DesktopModeWindowDecorViewModelTests extends ShellTestCase {
                 mSyncQueue,
                 Optional.of(mDesktopModeController),
                 Optional.of(mDesktopTasksController),
+                Optional.of(mSplitScreenController),
                 mDesktopModeWindowDecorFactory,
                 mMockInputMonitorFactory
             );
@@ -205,28 +208,32 @@ public class DesktopModeWindowDecorViewModelTests extends ShellTestCase {
                     "testEventReceiversOnMultipleDisplays", /*width=*/ 400, /*height=*/ 400,
                     /*densityDpi=*/ 320, surfaceView.getHolder().getSurface(),
                     DisplayManager.VIRTUAL_DISPLAY_FLAG_OWN_CONTENT_ONLY);
-            int secondaryDisplayId = secondaryDisplay.getDisplay().getDisplayId();
+            try {
+                int secondaryDisplayId = secondaryDisplay.getDisplay().getDisplayId();
 
-            final int taskId = 1;
-            final ActivityManager.RunningTaskInfo taskInfo =
-                    createTaskInfo(taskId, Display.DEFAULT_DISPLAY, WINDOWING_MODE_FREEFORM);
-            final ActivityManager.RunningTaskInfo secondTaskInfo =
-                    createTaskInfo(taskId + 1, secondaryDisplayId, WINDOWING_MODE_FREEFORM);
-            final ActivityManager.RunningTaskInfo thirdTaskInfo =
-                    createTaskInfo(taskId + 2, secondaryDisplayId, WINDOWING_MODE_FREEFORM);
+                final int taskId = 1;
+                final ActivityManager.RunningTaskInfo taskInfo =
+                        createTaskInfo(taskId, Display.DEFAULT_DISPLAY, WINDOWING_MODE_FREEFORM);
+                final ActivityManager.RunningTaskInfo secondTaskInfo =
+                        createTaskInfo(taskId + 1, secondaryDisplayId, WINDOWING_MODE_FREEFORM);
+                final ActivityManager.RunningTaskInfo thirdTaskInfo =
+                        createTaskInfo(taskId + 2, secondaryDisplayId, WINDOWING_MODE_FREEFORM);
 
-            SurfaceControl surfaceControl = mock(SurfaceControl.class);
-            final SurfaceControl.Transaction startT = mock(SurfaceControl.Transaction.class);
-            final SurfaceControl.Transaction finishT = mock(SurfaceControl.Transaction.class);
+                SurfaceControl surfaceControl = mock(SurfaceControl.class);
+                final SurfaceControl.Transaction startT = mock(SurfaceControl.Transaction.class);
+                final SurfaceControl.Transaction finishT = mock(SurfaceControl.Transaction.class);
 
-            mDesktopModeWindowDecorViewModel.onTaskOpening(taskInfo, surfaceControl, startT,
-                    finishT);
-            mDesktopModeWindowDecorViewModel.onTaskOpening(secondTaskInfo, surfaceControl,
-                    startT, finishT);
-            mDesktopModeWindowDecorViewModel.onTaskOpening(thirdTaskInfo, surfaceControl,
-                    startT, finishT);
-            mDesktopModeWindowDecorViewModel.destroyWindowDecoration(thirdTaskInfo);
-            mDesktopModeWindowDecorViewModel.destroyWindowDecoration(taskInfo);
+                mDesktopModeWindowDecorViewModel.onTaskOpening(taskInfo, surfaceControl, startT,
+                        finishT);
+                mDesktopModeWindowDecorViewModel.onTaskOpening(secondTaskInfo, surfaceControl,
+                        startT, finishT);
+                mDesktopModeWindowDecorViewModel.onTaskOpening(thirdTaskInfo, surfaceControl,
+                        startT, finishT);
+                mDesktopModeWindowDecorViewModel.destroyWindowDecoration(thirdTaskInfo);
+                mDesktopModeWindowDecorViewModel.destroyWindowDecoration(taskInfo);
+            } finally {
+                secondaryDisplay.release();
+            }
         });
         verify(mMockInputMonitorFactory, times(2)).create(any(), any());
         verify(mInputMonitor, times(1)).dispose();
@@ -239,7 +246,7 @@ public class DesktopModeWindowDecorViewModelTests extends ShellTestCase {
             r.run();
             latch.countDown();
         });
-        latch.await(20, TimeUnit.MILLISECONDS);
+        latch.await(1, TimeUnit.SECONDS);
     }
 
     private static ActivityManager.RunningTaskInfo createTaskInfo(int taskId,

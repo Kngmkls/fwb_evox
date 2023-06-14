@@ -17,7 +17,7 @@
 package com.android.systemui.statusbar.pipeline.wifi.data.repository
 
 import com.android.systemui.statusbar.pipeline.shared.data.model.DataActivityModel
-import com.android.systemui.statusbar.pipeline.wifi.data.model.WifiNetworkModel
+import com.android.systemui.statusbar.pipeline.wifi.shared.model.WifiNetworkModel
 import kotlinx.coroutines.flow.StateFlow
 
 /** Provides data related to the wifi state. */
@@ -34,3 +34,13 @@ interface WifiRepository {
     /** Observable for the current wifi network activity. */
     val wifiActivity: StateFlow<DataActivityModel>
 }
+
+/**
+ * A no-op interface used for Dagger bindings.
+ *
+ * [WifiRepositorySwitcher] needs to inject the "real" wifi repository, which could either be the
+ * full [WifiRepositoryImpl] or just [DisabledWifiRepository]. Having this interface lets us bind
+ * [RealWifiRepository], and then [WifiRepositorySwitcher] will automatically get the correct real
+ * repository.
+ */
+interface RealWifiRepository : WifiRepository

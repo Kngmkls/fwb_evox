@@ -30,9 +30,11 @@ import com.android.systemui.statusbar.StatusBarIconView
 import com.android.systemui.statusbar.StatusBarIconView.STATE_DOT
 import com.android.systemui.statusbar.StatusBarIconView.STATE_HIDDEN
 import com.android.systemui.statusbar.StatusBarIconView.STATE_ICON
+import com.android.systemui.statusbar.pipeline.shared.ui.binder.ModernStatusBarViewBinding
 import com.android.systemui.statusbar.pipeline.wifi.ui.model.WifiIcon
 import com.android.systemui.statusbar.pipeline.wifi.ui.viewmodel.LocationBasedWifiViewModel
 import kotlinx.coroutines.InternalCoroutinesApi
+import kotlinx.coroutines.awaitCancellation
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.collect
 import kotlinx.coroutines.flow.distinctUntilChanged
@@ -49,31 +51,12 @@ import kotlinx.coroutines.launch
 @Suppress("EXPERIMENTAL_IS_NOT_ENABLED")
 object WifiViewBinder {
 
-    /**
-     * Defines interface for an object that acts as the binding between the view and its view-model.
-     *
-     * Users of the [WifiViewBinder] class should use this to control the binder after it is bound.
-     */
-    interface Binding {
-        /** Returns true if the wifi icon should be visible and false otherwise. */
-        fun getShouldIconBeVisible(): Boolean
-
-        /** Notifies that the visibility state has changed. */
-        fun onVisibilityStateChanged(@StatusBarIconView.VisibleState state: Int)
-
-        /** Notifies that the icon tint has been updated. */
-        fun onIconTintChanged(newTint: Int)
-
-        /** Notifies that the decor tint has been updated (used only for the dot). */
-        fun onDecorTintChanged(newTint: Int)
-    }
-
     /** Binds the view to the view-model, continuing to update the former based on the latter. */
     @JvmStatic
     fun bind(
         view: ViewGroup,
         viewModel: LocationBasedWifiViewModel,
-    ): Binding {
+    ): ModernStatusBarViewBinding {
         val groupView = view.requireViewById<ViewGroup>(R.id.wifi_group)
         val iconView = view.requireViewById<ImageView>(R.id.wifi_signal)
         val dotView = view.requireViewById<StatusBarIconView>(R.id.status_bar_dot)
@@ -92,8 +75,12 @@ object WifiViewBinder {
         val iconTint: MutableStateFlow<Int> = MutableStateFlow(viewModel.defaultColor)
         val decorTint: MutableStateFlow<Int> = MutableStateFlow(viewModel.defaultColor)
 
+        var isCollecting: Boolean = false
+
         view.repeatWhenAttached {
             repeatOnLifecycle(Lifecycle.State.STARTED) {
+                isCollecting = true
+
                 launch {
                     visibilityState.collect { visibilityState ->
                         groupView.isVisible = visibilityState == STATE_ICON
@@ -145,10 +132,16 @@ object WifiViewBinder {
                         airplaneSpacer.isVisible = visible
                     }
                 }
+
+                try {
+                    awaitCancellation()
+                } finally {
+                    isCollecting = false
+                }
             }
         }
 
-        return object : Binding {
+        return object : ModernStatusBarViewBinding {
             override fun getShouldIconBeVisible(): Boolean {
                 return viewModel.wifiIcon.value is WifiIcon.Visible
             }
@@ -169,6 +162,10 @@ object WifiViewBinder {
                     return
                 }
                 decorTint.value = newTint
+            }
+
+            override fun isCollecting(): Boolean {
+                return isCollecting
             }
         }
     }

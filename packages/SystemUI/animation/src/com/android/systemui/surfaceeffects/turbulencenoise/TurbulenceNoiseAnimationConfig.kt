@@ -30,12 +30,14 @@ data class TurbulenceNoiseAnimationConfig(
      * Noise move speed variables.
      *
      * Its sign determines the direction; magnitude determines the speed. <ul>
+     *
      * ```
      *     <li> [noiseMoveSpeedX] positive: right to left; negative: left to right.
      *     <li> [noiseMoveSpeedY] positive: bottom to top; negative: top to bottom.
      *     <li> [noiseMoveSpeedZ] its sign doesn't matter much, as it moves in Z direction. Use it
      *     to add turbulence in place.
      * ```
+     *
      * </ul>
      */
     val noiseMoveSpeedX: Float = 0f,
@@ -49,13 +51,16 @@ data class TurbulenceNoiseAnimationConfig(
     val opacity: Int = DEFAULT_OPACITY,
     val width: Float = 0f,
     val height: Float = 0f,
-    val duration: Float = DEFAULT_NOISE_DURATION_IN_MILLIS,
+    val maxDuration: Float = DEFAULT_MAX_DURATION_IN_MILLIS,
+    val easeInDuration: Float = DEFAULT_EASING_DURATION_IN_MILLIS,
+    val easeOutDuration: Float = DEFAULT_EASING_DURATION_IN_MILLIS,
     val pixelDensity: Float = 1f,
     val blendMode: BlendMode = DEFAULT_BLEND_MODE,
     val onAnimationEnd: Runnable? = null
 ) {
     companion object {
-        const val DEFAULT_NOISE_DURATION_IN_MILLIS = 7500F
+        const val DEFAULT_MAX_DURATION_IN_MILLIS = 30_000f // Max 30 sec
+        const val DEFAULT_EASING_DURATION_IN_MILLIS = 750f
         const val DEFAULT_LUMINOSITY_MULTIPLIER = 1f
         const val DEFAULT_NOISE_GRID_COUNT = 1.2f
         const val DEFAULT_NOISE_SPEED_Z = 0.3f

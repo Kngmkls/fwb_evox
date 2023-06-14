@@ -21,6 +21,7 @@ import com.android.settingslib.SignalIcon
 import com.android.settingslib.mobile.TelephonyIcons
 import com.android.systemui.log.table.TableLogBuffer
 import com.android.systemui.statusbar.pipeline.mobile.data.model.NetworkNameModel
+import com.android.systemui.statusbar.pipeline.mobile.data.repository.MobileConnectionRepository.Companion.DEFAULT_NUM_LEVELS
 import com.android.systemui.statusbar.pipeline.shared.data.model.DataActivityModel
 import kotlinx.coroutines.flow.MutableStateFlow
 
@@ -39,10 +40,12 @@ class FakeMobileIconInteractor(
             )
         )
 
+    override val isConnected = MutableStateFlow(true)
+
     private val _iconGroup = MutableStateFlow<SignalIcon.MobileIconGroup>(TelephonyIcons.THREE_G)
     override val networkTypeIconGroup = _iconGroup
 
-    override val networkName = MutableStateFlow(NetworkNameModel.Derived("demo mode"))
+    override val networkName = MutableStateFlow(NetworkNameModel.IntentDerived("demo mode"))
 
     private val _isEmergencyOnly = MutableStateFlow(false)
     override val isEmergencyOnly = _isEmergencyOnly
@@ -65,8 +68,10 @@ class FakeMobileIconInteractor(
     private val _level = MutableStateFlow(CellSignalStrength.SIGNAL_STRENGTH_NONE_OR_UNKNOWN)
     override val level = _level
 
-    private val _numberOfLevels = MutableStateFlow(4)
+    private val _numberOfLevels = MutableStateFlow(DEFAULT_NUM_LEVELS)
     override val numberOfLevels = _numberOfLevels
+
+    override val isForceHidden = MutableStateFlow(false)
 
     fun setIconGroup(group: SignalIcon.MobileIconGroup) {
         _iconGroup.value = group

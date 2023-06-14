@@ -17,13 +17,12 @@
 package com.android.systemui.statusbar.pipeline.mobile.data.repository
 
 import android.telephony.SubscriptionInfo
-import android.telephony.SubscriptionManager
-import android.telephony.TelephonyCallback
 import android.telephony.TelephonyManager
 import com.android.systemui.log.table.TableLogBuffer
-import com.android.systemui.statusbar.pipeline.mobile.data.model.MobileConnectionModel
+import com.android.systemui.statusbar.pipeline.mobile.data.model.DataConnectionState
 import com.android.systemui.statusbar.pipeline.mobile.data.model.NetworkNameModel
-import kotlinx.coroutines.flow.Flow
+import com.android.systemui.statusbar.pipeline.mobile.data.model.ResolvedNetworkType
+import com.android.systemui.statusbar.pipeline.shared.data.model.DataActivityModel
 import kotlinx.coroutines.flow.StateFlow
 
 /**
@@ -47,18 +46,63 @@ interface MobileConnectionRepository {
      */
     val tableLogBuffer: TableLogBuffer
 
+    /** True if the [android.telephony.ServiceState] says this connection is emergency calls only */
+    val isEmergencyOnly: StateFlow<Boolean>
+
+    /** True if [android.telephony.ServiceState] says we are roaming */
+    val isRoaming: StateFlow<Boolean>
+
     /**
-     * A flow that aggregates all necessary callbacks from [TelephonyCallback] into a single
-     * listener + model.
+     * See [android.telephony.ServiceState.getOperatorAlphaShort], this value is defined as the
+     * current registered operator name in short alphanumeric format. In some cases this name might
+     * be preferred over other methods of calculating the network name
      */
-    val connectionInfo: Flow<MobileConnectionModel>
+    val operatorAlphaShort: StateFlow<String?>
+
+    /**
+     * TODO (b/263167683): Clarify this field
+     *
+     * This check comes from [com.android.settingslib.Utils.isInService]. It is intended to be a
+     * mapping from a ServiceState to a notion of connectivity. Notably, it will consider a
+     * connection to be in-service if either the voice registration state is IN_SERVICE or the data
+     * registration state is IN_SERVICE and NOT IWLAN.
+     */
+    val isInService: StateFlow<Boolean>
+
+    /** True if [android.telephony.SignalStrength] told us that this connection is using GSM */
+    val isGsm: StateFlow<Boolean>
+
+    /**
+     * There is still specific logic in the pipeline that calls out CDMA level explicitly. This
+     * field is not completely orthogonal to [primaryLevel], because CDMA could be primary.
+     */
+    // @IntRange(from = 0, to = 4)
+    val cdmaLevel: StateFlow<Int>
+
+    /** [android.telephony.SignalStrength]'s concept of the overall signal level */
+    // @IntRange(from = 0, to = 4)
+    val primaryLevel: StateFlow<Int>
+
+    /** The current data connection state. See [DataConnectionState] */
+    val dataConnectionState: StateFlow<DataConnectionState>
+
+    /** The current data activity direction. See [DataActivityModel] */
+    val dataActivityDirection: StateFlow<DataActivityModel>
+
+    /** True if there is currently a carrier network change in process */
+    val carrierNetworkChangeActive: StateFlow<Boolean>
+
+    /**
+     * [resolvedNetworkType] is the [TelephonyDisplayInfo.getOverrideNetworkType] if it exists or
+     * [TelephonyDisplayInfo.getNetworkType]. This is used to look up the proper network type icon
+     */
+    val resolvedNetworkType: StateFlow<ResolvedNetworkType>
+
+    /** The total number of levels. Used with [SignalDrawable]. */
+    val numberOfLevels: StateFlow<Int>
+
     /** Observable tracking [TelephonyManager.isDataConnectionAllowed] */
     val dataEnabled: StateFlow<Boolean>
-    /**
-     * True if this connection represents the default subscription per
-     * [SubscriptionManager.getDefaultDataSubscriptionId]
-     */
-    val isDefaultDataSubscription: StateFlow<Boolean>
 
     /**
      * See [TelephonyManager.getCdmaEnhancedRoamingIndicatorDisplayNumber]. This bit only matters if
@@ -70,4 +114,9 @@ interface MobileConnectionRepository {
 
     /** The service provider name for this network connection, or the default name */
     val networkName: StateFlow<NetworkNameModel>
+
+    companion object {
+        /** The default number of levels to use for [numberOfLevels]. */
+        const val DEFAULT_NUM_LEVELS = 4
+    }
 }

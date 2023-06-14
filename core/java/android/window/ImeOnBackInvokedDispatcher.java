@@ -211,6 +211,12 @@ public class ImeOnBackInvokedDispatcher implements OnBackInvokedDispatcher, Parc
         IOnBackInvokedCallback getIOnBackInvokedCallback() {
             return mIOnBackInvokedCallback;
         }
+
+        @Override
+        public String toString() {
+            return "ImeCallback=ImeOnBackInvokedCallback@" + mId
+                    + " Callback=" + mIOnBackInvokedCallback;
+        }
     }
 
     /**
@@ -220,16 +226,14 @@ public class ImeOnBackInvokedDispatcher implements OnBackInvokedDispatcher, Parc
      * @param previous the previously focused {@link ViewRootImpl}.
      * @param current the currently focused {@link ViewRootImpl}.
      */
-    // TODO(b/232845902): Add CTS to test IME back behavior when there's root view change while
-    // IME is up.
     public void switchRootView(ViewRootImpl previous, ViewRootImpl current) {
         for (ImeOnBackInvokedCallback imeCallback : mImeCallbacks) {
             if (previous != null) {
                 previous.getOnBackInvokedDispatcher().unregisterOnBackInvokedCallback(imeCallback);
             }
             if (current != null) {
-                current.getOnBackInvokedDispatcher().registerOnBackInvokedCallback(
-                        imeCallback.mPriority, imeCallback);
+                current.getOnBackInvokedDispatcher().registerOnBackInvokedCallbackUnchecked(
+                        imeCallback, imeCallback.mPriority);
             }
         }
     }

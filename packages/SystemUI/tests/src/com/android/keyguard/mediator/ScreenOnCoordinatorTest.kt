@@ -16,29 +16,26 @@
 
 package com.android.keyguard.mediator
 
+import android.os.Handler
+import android.os.Looper
 import android.testing.AndroidTestingRunner
 import androidx.test.filters.SmallTest
-
 import com.android.systemui.SysuiTestCase
-import com.android.systemui.keyguard.ScreenLifecycle
 import com.android.systemui.unfold.FoldAodAnimationController
 import com.android.systemui.unfold.SysUIUnfoldComponent
 import com.android.systemui.unfold.UnfoldLightRevealOverlayAnimation
-import com.android.systemui.util.concurrency.FakeExecution
 import com.android.systemui.util.mockito.capture
-
-import java.util.Optional
-
 import org.junit.Before
 import org.junit.Test
 import org.junit.runner.RunWith
-
 import org.mockito.ArgumentCaptor
 import org.mockito.Captor
 import org.mockito.Mock
 import org.mockito.Mockito.`when`
+import org.mockito.Mockito.never
 import org.mockito.Mockito.verify
 import org.mockito.MockitoAnnotations
+import java.util.Optional
 
 @SmallTest
 @RunWith(AndroidTestingRunner::class)
@@ -55,6 +52,8 @@ class ScreenOnCoordinatorTest : SysuiTestCase() {
     @Captor
     private lateinit var readyCaptor: ArgumentCaptor<Runnable>
 
+    private val testHandler = Handler(Looper.getMainLooper())
+
     private lateinit var screenOnCoordinator: ScreenOnCoordinator
 
     @Before
@@ -68,6 +67,7 @@ class ScreenOnCoordinatorTest : SysuiTestCase() {
 
         screenOnCoordinator = ScreenOnCoordinator(
             Optional.of(unfoldComponent),
+            testHandler
         )
     }
 
@@ -77,9 +77,37 @@ class ScreenOnCoordinatorTest : SysuiTestCase() {
 
         onUnfoldOverlayReady()
         onFoldAodReady()
+        waitHandlerIdle(testHandler)
 
         // Should be called when both unfold overlay and keyguard drawn ready
         verify(runnable).run()
+    }
+
+    @Test
+    fun testTasksReady_onScreenTurningOnAndTurnedOnEventsCalledTogether_callsDrawnCallback() {
+        screenOnCoordinator.onScreenTurningOn(runnable)
+        screenOnCoordinator.onScreenTurnedOn()
+
+        onUnfoldOverlayReady()
+        onFoldAodReady()
+        waitHandlerIdle(testHandler)
+
+        // Should be called when both unfold overlay and keyguard drawn ready
+        verify(runnable).run()
+    }
+
+    @Test
+    fun testTasksReady_onScreenTurnedOnAndTurnedOffBeforeCompletion_doesNotCallDrawnCallback() {
+        screenOnCoordinator.onScreenTurningOn(runnable)
+        screenOnCoordinator.onScreenTurnedOn()
+        screenOnCoordinator.onScreenTurnedOff()
+
+        onUnfoldOverlayReady()
+        onFoldAodReady()
+        waitHandlerIdle(testHandler)
+
+        // Should not be called because this screen turning on call is not valid anymore
+        verify(runnable, never()).run()
     }
 
     @Test
@@ -87,8 +115,10 @@ class ScreenOnCoordinatorTest : SysuiTestCase() {
         // Recreate with empty unfoldComponent
         screenOnCoordinator = ScreenOnCoordinator(
             Optional.empty(),
+            testHandler
         )
         screenOnCoordinator.onScreenTurningOn(runnable)
+        waitHandlerIdle(testHandler)
 
         // Should be called when only keyguard drawn
         verify(runnable).run()
@@ -102,5 +132,9 @@ class ScreenOnCoordinatorTest : SysuiTestCase() {
     private fun onFoldAodReady() {
         verify(foldAodAnimationController).onScreenTurningOn(capture(readyCaptor))
         readyCaptor.value.run()
+    }
+
+    private fun waitHandlerIdle(handler: Handler) {
+        handler.runWithScissors({},  /* timeout= */ 0)
     }
 }

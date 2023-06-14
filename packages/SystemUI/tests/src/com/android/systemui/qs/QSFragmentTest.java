@@ -52,14 +52,17 @@ import com.android.systemui.R;
 import com.android.systemui.SysuiBaseFragmentTest;
 import com.android.systemui.animation.ShadeInterpolation;
 import com.android.systemui.dump.DumpManager;
-import com.android.systemui.flags.FakeFeatureFlags;
+import com.android.systemui.flags.FeatureFlags;
+import com.android.systemui.flags.Flags;
 import com.android.systemui.media.controls.ui.MediaHost;
-import com.android.systemui.plugins.FalsingManager;
 import com.android.systemui.qs.customize.QSCustomizerController;
 import com.android.systemui.qs.dagger.QSFragmentComponent;
 import com.android.systemui.qs.external.TileServiceRequestController;
 import com.android.systemui.qs.footer.ui.binder.FooterActionsViewBinder;
 import com.android.systemui.qs.footer.ui.viewmodel.FooterActionsViewModel;
+import com.android.systemui.qs.logging.QSLogger;
+import com.android.systemui.settings.FakeDisplayTracker;
+import com.android.systemui.shade.transition.LargeScreenShadeInterpolator;
 import com.android.systemui.statusbar.CommandQueue;
 import com.android.systemui.statusbar.StatusBarState;
 import com.android.systemui.statusbar.SysuiStatusBarStateController;
@@ -85,7 +88,6 @@ public class QSFragmentTest extends SysuiBaseFragmentTest {
     @Mock private MediaHost mQSMediaHost;
     @Mock private MediaHost mQQSMediaHost;
     @Mock private KeyguardBypassController mBypassController;
-    @Mock private FalsingManager mFalsingManager;
     @Mock private TileServiceRequestController.Builder mTileServiceRequestControllerBuilder;
     @Mock private TileServiceRequestController mTileServiceRequestController;
     @Mock private QSCustomizerController mQsCustomizerController;
@@ -104,6 +106,8 @@ public class QSFragmentTest extends SysuiBaseFragmentTest {
     @Mock private QSSquishinessController mSquishinessController;
     @Mock private FooterActionsViewModel mFooterActionsViewModel;
     @Mock private FooterActionsViewModel.Factory mFooterActionsViewModelFactory;
+    @Mock private LargeScreenShadeInterpolator mLargeScreenShadeInterpolator;
+    @Mock private FeatureFlags mFeatureFlags;
     private View mQsFragmentView;
 
     public QSFragmentTest() {
@@ -149,12 +153,50 @@ public class QSFragmentTest extends SysuiBaseFragmentTest {
     }
 
     @Test
-    public void transitionToFullShade_setsAlphaUsingShadeInterpolator() {
+    public void transitionToFullShade_smallScreen_alphaAlways1() {
         QSFragment fragment = resumeAndGetFragment();
-        setStatusBarState(StatusBarState.SHADE);
+        setIsSmallScreen();
+        setStatusBarCurrentAndUpcomingState(StatusBarState.SHADE);
         boolean isTransitioningToFullShade = true;
         float transitionProgress = 0.5f;
         float squishinessFraction = 0.5f;
+
+        fragment.setTransitionToFullShadeProgress(isTransitioningToFullShade, transitionProgress,
+                squishinessFraction);
+
+        assertThat(mQsFragmentView.getAlpha()).isEqualTo(1f);
+    }
+
+    @Test
+    public void transitionToFullShade_largeScreen_flagEnabled_alphaLargeScreenShadeInterpolator() {
+        when(mFeatureFlags.isEnabled(Flags.LARGE_SHADE_GRANULAR_ALPHA_INTERPOLATION))
+                .thenReturn(true);
+        QSFragment fragment = resumeAndGetFragment();
+        setIsLargeScreen();
+        setStatusBarCurrentAndUpcomingState(StatusBarState.SHADE);
+        boolean isTransitioningToFullShade = true;
+        float transitionProgress = 0.5f;
+        float squishinessFraction = 0.5f;
+        when(mLargeScreenShadeInterpolator.getQsAlpha(transitionProgress)).thenReturn(123f);
+
+        fragment.setTransitionToFullShadeProgress(isTransitioningToFullShade, transitionProgress,
+                squishinessFraction);
+
+        assertThat(mQsFragmentView.getAlpha())
+                .isEqualTo(123f);
+    }
+
+    @Test
+    public void transitionToFullShade_largeScreen_flagDisabled_alphaStandardInterpolator() {
+        when(mFeatureFlags.isEnabled(Flags.LARGE_SHADE_GRANULAR_ALPHA_INTERPOLATION))
+                .thenReturn(false);
+        QSFragment fragment = resumeAndGetFragment();
+        setIsLargeScreen();
+        setStatusBarCurrentAndUpcomingState(StatusBarState.SHADE);
+        boolean isTransitioningToFullShade = true;
+        float transitionProgress = 0.5f;
+        float squishinessFraction = 0.5f;
+        when(mLargeScreenShadeInterpolator.getQsAlpha(transitionProgress)).thenReturn(123f);
 
         fragment.setTransitionToFullShadeProgress(isTransitioningToFullShade, transitionProgress,
                 squishinessFraction);
@@ -167,7 +209,7 @@ public class QSFragmentTest extends SysuiBaseFragmentTest {
     public void
             transitionToFullShade_onKeyguard_noBouncer_setsAlphaUsingLinearInterpolator() {
         QSFragment fragment = resumeAndGetFragment();
-        setStatusBarState(KEYGUARD);
+        setStatusBarCurrentAndUpcomingState(KEYGUARD);
         when(mQSPanelController.isBouncerInTransit()).thenReturn(false);
         boolean isTransitioningToFullShade = true;
         float transitionProgress = 0.5f;
@@ -183,7 +225,7 @@ public class QSFragmentTest extends SysuiBaseFragmentTest {
     public void
             transitionToFullShade_onKeyguard_bouncerActive_setsAlphaUsingBouncerInterpolator() {
         QSFragment fragment = resumeAndGetFragment();
-        setStatusBarState(KEYGUARD);
+        setStatusBarCurrentAndUpcomingState(KEYGUARD);
         when(mQSPanelController.isBouncerInTransit()).thenReturn(true);
         boolean isTransitioningToFullShade = true;
         float transitionProgress = 0.5f;
@@ -482,10 +524,19 @@ public class QSFragmentTest extends SysuiBaseFragmentTest {
         assertEquals(175, mediaHostClip.bottom);
     }
 
+    @Test
+    public void testQsUpdatesQsAnimatorWithUpcomingState() {
+        QSFragment fragment = resumeAndGetFragment();
+        setStatusBarCurrentAndUpcomingState(SHADE);
+        fragment.onUpcomingStateChanged(KEYGUARD);
+
+        verify(mQSAnimator).setOnKeyguard(true);
+    }
+
     @Override
     protected Fragment instantiate(Context context, String className, Bundle arguments) {
         MockitoAnnotations.initMocks(this);
-        CommandQueue commandQueue = new CommandQueue(context);
+        CommandQueue commandQueue = new CommandQueue(context, new FakeDisplayTracker(context));
 
         setupQsComponent();
         setUpViews();
@@ -493,11 +544,9 @@ public class QSFragmentTest extends SysuiBaseFragmentTest {
         setUpMedia();
         setUpOther();
 
-        FakeFeatureFlags featureFlags = new FakeFeatureFlags();
         return new QSFragment(
                 new RemoteInputQuickSettingsDisabler(
                         context, commandQueue, mock(ConfigurationController.class)),
-                mock(QSTileHost.class),
                 mStatusBarStateController,
                 commandQueue,
                 mQSMediaHost,
@@ -505,11 +554,12 @@ public class QSFragmentTest extends SysuiBaseFragmentTest {
                 mBypassController,
                 mQsComponentFactory,
                 mock(QSFragmentDisableFlagsLogger.class),
-                mFalsingManager,
                 mock(DumpManager.class),
-                featureFlags,
+                mock(QSLogger.class),
                 mock(FooterActionsController.class),
-                mFooterActionsViewModelFactory);
+                mFooterActionsViewModelFactory,
+                mLargeScreenShadeInterpolator,
+                mFeatureFlags);
     }
 
     private void setUpOther() {
@@ -591,8 +641,9 @@ public class QSFragmentTest extends SysuiBaseFragmentTest {
         return getFragment();
     }
 
-    private void setStatusBarState(int statusBarState) {
+    private void setStatusBarCurrentAndUpcomingState(int statusBarState) {
         when(mStatusBarStateController.getState()).thenReturn(statusBarState);
+        when(mStatusBarStateController.getCurrentOrUpcomingState()).thenReturn(statusBarState);
         getFragment().onStateChanged(statusBarState);
     }
 
@@ -615,5 +666,13 @@ public class QSFragmentTest extends SysuiBaseFragmentTest {
             locationOnScreen[1] = top;
             return null;
         }).when(view).getLocationOnScreen(any(int[].class));
+    }
+
+    private void setIsLargeScreen() {
+        getFragment().setIsNotificationPanelFullWidth(false);
+    }
+
+    private void setIsSmallScreen() {
+        getFragment().setIsNotificationPanelFullWidth(true);
     }
 }

@@ -23,6 +23,7 @@ import android.content.Context
 import android.graphics.Matrix
 import android.graphics.Rect
 import android.os.Handler
+import android.os.PowerManager
 import android.os.RemoteException
 import android.util.Log
 import android.view.RemoteAnimationTarget
@@ -145,7 +146,8 @@ class KeyguardUnlockAnimationController @Inject constructor(
     private val featureFlags: FeatureFlags,
     private val biometricUnlockControllerLazy: Lazy<BiometricUnlockController>,
     private val statusBarStateController: SysuiStatusBarStateController,
-    private val notificationShadeWindowController: NotificationShadeWindowController
+    private val notificationShadeWindowController: NotificationShadeWindowController,
+    private val powerManager: PowerManager
 ) : KeyguardStateController.Callback, ISysuiUnlockAnimationController.Stub() {
 
     interface KeyguardUnlockAnimationListener {
@@ -344,7 +346,7 @@ class KeyguardUnlockAnimationController @Inject constructor(
                 override fun onAnimationEnd(animation: Animator) {
                     Log.d(TAG, "surfaceBehindEntryAnimator#onAnimationEnd")
                     playingCannedUnlockAnimation = false
-                    keyguardViewMediator.get().onKeyguardExitRemoteAnimationFinished(
+                    keyguardViewMediator.get().exitKeyguardAndFinishSurfaceBehindRemoteAnimation(
                         false /* cancelled */
                     )
                 }
@@ -378,10 +380,7 @@ class KeyguardUnlockAnimationController @Inject constructor(
                 // If the launcher is underneath, but we're about to launch an activity, don't do
                 // the animations since they won't be visible.
                 !notificationShadeWindowController.isLaunchingActivity &&
-                launcherUnlockController != null &&
-                // Temporarily disable for foldables since foldable launcher has two first pages,
-                // which breaks the in-window animation.
-                !isFoldable(context)
+                launcherUnlockController != null
     }
 
     /**
@@ -579,7 +578,7 @@ class KeyguardUnlockAnimationController @Inject constructor(
             biometricUnlockControllerLazy.get().isWakeAndUnlock -> {
                 Log.d(TAG, "playCannedUnlockAnimation, isWakeAndUnlock")
                 setSurfaceBehindAppearAmount(1f)
-                keyguardViewMediator.get().onKeyguardExitRemoteAnimationFinished(
+                keyguardViewMediator.get().exitKeyguardAndFinishSurfaceBehindRemoteAnimation(
                     false /* cancelled */)
             }
 
@@ -627,7 +626,7 @@ class KeyguardUnlockAnimationController @Inject constructor(
                 return@postDelayed
             }
 
-            keyguardViewMediator.get().onKeyguardExitRemoteAnimationFinished(
+            keyguardViewMediator.get().exitKeyguardAndFinishSurfaceBehindRemoteAnimation(
                 false /* cancelled */)
         }, CANNED_UNLOCK_START_DELAY)
     }
@@ -745,7 +744,8 @@ class KeyguardUnlockAnimationController @Inject constructor(
                         !keyguardStateController.isFlingingToDismissKeyguardDuringSwipeGesture &&
                         dismissAmount >= DISMISS_AMOUNT_EXIT_KEYGUARD_THRESHOLD)) {
             setSurfaceBehindAppearAmount(1f)
-            keyguardViewMediator.get().onKeyguardExitRemoteAnimationFinished(false /* cancelled */)
+            keyguardViewMediator.get().exitKeyguardAndFinishSurfaceBehindRemoteAnimation(
+                    false /* cancelled */)
         }
     }
 
@@ -783,10 +783,15 @@ class KeyguardUnlockAnimationController @Inject constructor(
                     surfaceHeight * SURFACE_BEHIND_SCALE_PIVOT_Y
             )
 
-            // If we're snapping the keyguard back, immediately begin fading it out.
-            val animationAlpha =
-                    if (keyguardStateController.isSnappingKeyguardBackAfterSwipe) amount
-                    else surfaceBehindAlpha
+
+            val animationAlpha = when {
+                // If we're snapping the keyguard back, immediately begin fading it out.
+                keyguardStateController.isSnappingKeyguardBackAfterSwipe -> amount
+                // If the screen has turned back off, the unlock animation is going to be cancelled,
+                // so set the surface alpha to 0f so it's no longer visible.
+                !powerManager.isInteractive -> 0f
+                else -> surfaceBehindAlpha
+            }
 
             // SyncRtSurfaceTransactionApplier cannot apply transaction when the target view is
             // unable to draw
@@ -925,7 +930,7 @@ class KeyguardUnlockAnimationController @Inject constructor(
         }
 
         // The smartspace is not visible if the bouncer is showing, so don't shared element it.
-        if (keyguardStateController.isBouncerShowing) {
+        if (keyguardStateController.isPrimaryBouncerShowing) {
             return false
         }
 
@@ -942,9 +947,9 @@ class KeyguardUnlockAnimationController @Inject constructor(
             return false
         }
 
-        // We don't do the shared element on tablets because they're large and the smartspace has to
-        // fly across large distances, which is distracting.
-        if (Utilities.isTablet(context)) {
+        // We don't do the shared element on large screens because the smartspace has to fly across
+        // large distances, which is distracting.
+        if (Utilities.isLargeScreen(context)) {
             return false
         }
 
